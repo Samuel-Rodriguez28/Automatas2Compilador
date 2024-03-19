@@ -367,31 +367,129 @@ public class Compilador extends javax.swing.JFrame {
 
         gramatica.group("OP_LOG", "AND | OR", true);
         
-        
+        /*Estatuto Read*/
         gramatica.group("EST_READ", "READIN PARENTESIS_A IDENTIFICADOR PARENTESIS_C PUNTO_COMA | "
                                         + "READIN PARENTESIS_A IDENTIFICADOR (COMA IDENTIFICADOR)+ PARENTESIS_C PUNTO_COMA");
         
+        /*Manejo de errores*/
+        gramatica.group("EST_READ", "READIN IDENTIFICADOR PARENTESIS_C PUNTO_COMA | "
+                                        + "READIN IDENTIFICADOR (COMA IDENTIFICADOR)+ PARENTESIS_C PUNTO_COMA | "
+                                        + "READIN PARENTESIS_A IDENTIFICADOR PUNTO_COMA | "
+                                        + "READIN PARENTESIS_A IDENTIFICADOR (COMA)+ PUNTO_COMA | "
+                                        + "READIN PARENTESIS_A(COMA)+  IDENTIFICADOR PUNTO_COMA | "
+                                        + "READIN PARENTESIS_A IDENTIFICADOR (COMA IDENTIFICADOR)+ PUNTO_COMA", 3, "Error sintáctico: Falta parentesis de apertura o cierre en la expresión [#, %]");
+        
+        gramatica.group("EST_READ", "READIN PARENTESIS_A IDENTIFICADOR PARENTESIS_C | "
+                                        + "READIN PARENTESIS_A IDENTIFICADOR (COMA IDENTIFICADOR)+ PARENTESIS_C", 4, "Error sintáctico: Falta el punto y coma al final de la expresión [#, %]");
+        
+        gramatica.group("EST_READ", "READIN PARENTESIS_A PARENTESIS_C PUNTO_COMA", 5, "Error sintáctico: Nada que leer en la expresión [#, %]");
+        
+        gramatica.finalLineColumn();
+        
+        /*Estatuto Expresiones Aritmeticas*/
         gramatica.group("EXP_ARIT", "CTE (OP_ARIT (CTE | IDENTIFICADOR))+|"
                                         + "(PARENTESIS_A)+ CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (PARENTESIS_C)+");
         
+        /*Manejo de errores*/
+        gramatica.group("EXP_ARIT", "CTE (OP_ARIT (CTE | IDENTIFICADOR))+|"
+                                        + "CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (PARENTESIS_C)+ | "
+                                        + "(PARENTESIS_A)+ CTE (OP_ARIT (CTE | IDENTIFICADOR))+", 6, "Error sintáctico: Falta parentesis de apertura o cierre en la expresión [#, %]");
+        
+        gramatica.group("EXP_ARIT", "(OP_ARIT (CTE | IDENTIFICADOR))+ | "
+                                        + "CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (OP_ARIT)+ | "
+                                        + "(PARENTESIS_A)+ (OP_ARIT (CTE | IDENTIFICADOR))+ (PARENTESIS_C)+ | "
+                                        + "(PARENTESIS_A)+ CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (OP_ARIT)+ (PARENTESIS_C)+", 7, "Error sintáctico: Expresión incompleta [#, %]");
+        
+        gramatica.finalLineColumn();
+        
+        /*Estatuto de condición*/
         gramatica.group("CONDICION", "(IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
                                          + "(IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+  | "
                                          + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
                                          + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+");
         
+        /*Manejo de errores*/
+        gramatica.group("CONDICION", "(IDENTIFICADOR | EXP_ARIT) OP_REL | "
+                                         + "OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
+                                         + "(IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG)+ | "
+                                         + "(OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+ | "
+                                         + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL | "
+                                         + "NOT OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
+                                         + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG)+ | "
+                                         + "NOT (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+", 8, "Error sintáctico: Condición incompleta [#, %]");
+        
+        gramatica.finalLineColumn();
+        
+        /*Estatuto declarativo*/
         gramatica.group("EST_DECLAR", "TIPO_DATO IDENTIFICADOR IGUAL EXP_ARIT PUNTO_COMA | "
                                           + "TIPO_DATO IDENTIFICADOR PUNTO_COMA | "
                                           + "TIPO_DATO IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA");
         
+        /*Manejo de errores*/
+        gramatica.group("EST_DECLAR", "TIPO_DATO IGUAL EXP_ARIT PUNTO_COMA | "
+                                          + "TIPO_DATO PUNTO_COMA | "
+                                          + "TIPO_DATO IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA", 2, "Error sintáctico: Falta el identificador en la variable [#, %]");
+        
+        gramatica.finalLineColumn();
+        
+        gramatica.group("EST_DECLAR", "TIPO_DATO IDENTIFICADOR IGUAL EXP_ARIT | "
+                                          + "TIPO_DATO IDENTIFICADOR | "
+                                          + "TIPO_DATO IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR)", 3, "Error sintáctico: Falta el punto y coma al final de la expresión [#, %]");
+        
+        gramatica.finalLineColumn();
+        
+        /*Estatuto asignación*/
         gramatica.group("EST_ASIG", "IDENTIFICADOR IGUAL EXP_ARIT PUNTO_COMA | "
                                         + "IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA");
         
+        /*Manejo de errores*/
+        gramatica.group("EST_ASIG", "IGUAL EXP_ARIT PUNTO_COMA | "
+                                        + "IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA", 9, "Error sintáctico: Falta el identificador en la variable [#, %]");
+        
+        gramatica.group("EST_ASIG", "IDENTIFICADOR IGUAL EXP_ARIT | "
+                                        + "IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR)", 10, "Error sintáctico: Falta el punto y coma al final de la expresión [#, %]");
+        
+        gramatica.group("EST_ASIG", "IDENTIFICADOR IGUAL PUNTO_COMA | "
+                                        + "IDENTIFICADOR IGUAL PUNTO_COMA", 11, "Error sintáctico: Expresión incompleta [#, %]");
+        
+        /*Estatuto if*/
         gramatica.group("EST_IF", "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA");
         
+        /*Manejo de errores*/
+        gramatica.group("EST_IF", "IF CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                                      + "IF PARENTESIS_A CONDICION LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                                      + "IF PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                                      + "IF PARENTESIS_A CONDICION PARENTESIS_C (S)+ LLAVE_C PUNTO_COMA | "
+                                      + "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ PUNTO_COMA | "
+                                      + "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A LLAVE_C PUNTO_COMA | "
+                                      + "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C", 12, "Error sintactico: Expresion if incompleta [#, %]");
+        
+        /*Estatuto while*/
         gramatica.group("EST_WHILE", "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA");
         
+        /*Manejo de errores*/
+        gramatica.group("EST_WHILE", "WHILE CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                                         + "WHILE PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                                         + "WHILE PARENTESIS_A CONDICION LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                                         + "WHILE PARENTESIS_A CONDICION PARENTESIS_C (S)+ LLAVE_C PUNTO_COMA | "
+                                         + "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A LLAVE_C PUNTO_COMA | "
+                                         + "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S) PUNTO_COMA | "
+                                         + "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C", 12, "Error sintáctico: Estatuto while incompleto [#, %]");
+        
+        /*Estatuto do while*/
         gramatica.group("EST_DOWHILE", "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA");
         
+        /*Manejo de errores*/
+        gramatica.group("EST_DOWHILE", "DO (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
+                                           + "DO LLAVE_A LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
+                                           + "DO LLAVE_A (S)+ WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
+                                           + "DO LLAVE_A (S)+ LLAVE_C PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
+                                           + "DO LLAVE_A (S)+ LLAVE_C WHILE CONDICION PARENTESIS_C PUNTO_COMA | "
+                                           + "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A PARENTESIS_C PUNTO_COMA | "
+                                           + "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PUNTO_COMA | "
+                                           + "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C");
+        
+        /*Estatuto S*/
         gramatica.group("S", "EST_READ | EST_DECLAR | EST_ASIG | EST_IF | EST_WHILE | EST_DOWHILE");
         
         /* Mostrar gramáticas */
