@@ -55,6 +55,7 @@ public class Compilador extends javax.swing.JFrame {
         setLocationRelativeTo(null);
         setTitle(title);
         directorio = new Directory(this, jtpCode, title, ".comp");
+
         addWindowListener(new WindowAdapter() {// Cuando presiona la "X" de la esquina superior derecha
             @Override
             public void windowClosing(WindowEvent e) {
@@ -62,20 +63,24 @@ public class Compilador extends javax.swing.JFrame {
                 System.exit(0);
             }
         });
+
         Functions.setLineNumberOnJTextComponent(jtpCode);
         timerKeyReleased = new Timer((int) (1000 * 0.3), (ActionEvent e) -> {
             timerKeyReleased.stop();
             colorAnalysis();
         });
+
         Functions.insertAsteriskInName(this, jtpCode, () -> {
             timerKeyReleased.restart();
         });
+
         tokens = new ArrayList<>();
         errors = new ArrayList<>();
         textsColor = new ArrayList<>();
         identProd = new ArrayList<>();
         identificadores = new HashMap<>();
-        Functions.setAutocompleterJTextComponent(new String[]{}, jtpCode, () -> {
+
+        Functions.setAutocompleterJTextComponent(new String[]{"if", "else", "while", "do", "int", "String", "float", "char", "print"}, jtpCode, () -> {
             timerKeyReleased.restart();
         });
     }
@@ -329,6 +334,7 @@ public class Compilador extends javax.swing.JFrame {
             output.write(bytesText);
             BufferedReader entrada = new BufferedReader(new InputStreamReader(new FileInputStream(codigo), "UTF8"));
             lexer = new Lexer(entrada);
+
             while (true) {
                 Token token = lexer.yylex();
                 if (token == null) {
@@ -336,6 +342,7 @@ public class Compilador extends javax.swing.JFrame {
                 }
                 tokens.add(token);
             }
+
         } catch (FileNotFoundException ex) {
             System.out.println("El archivo no pudo ser encontrado... " + ex.getMessage());
         } catch (IOException ex) {
@@ -346,6 +353,47 @@ public class Compilador extends javax.swing.JFrame {
     private void syntacticAnalysis() {
         Grammar gramatica = new Grammar(tokens, errors);
 
+        /*Eliminación de errores*/
+        gramatica.delete(new String[]{"ERROR", "ERROR_1", "ERROR_2"}, 1);
+
+        /*Agrupación de valores básicos*/
+        gramatica.group("CTE", "ENTERO | TEXTO | CHAR | REAL | BOLEANO");
+        
+        gramatica.group("TIPO_DATO", "INT | STRING | FLOAT | BOOLEAN | CHAR", true);
+
+        gramatica.group("OP_ARIT", "SUMA | RESTA | MULTIPLICACION | DIVISION | MODULO | MULTIPLICACION", true);
+        
+        gramatica.group("OP_REL", "IGUAL_IGUAL | MAYOR_IGUAL | MENOR_IGUAL | MAYOR | MENOR | DIFERENTE", true);
+
+        gramatica.group("OP_LOG", "AND | OR", true);
+        
+        
+        gramatica.group("EST_READ", "READIN PARENTESIS_A IDENTIFICADOR PARENTESIS_C PUNTO_COMA | "
+                                        + "READIN PARENTESIS_A IDENTIFICADOR (COMA IDENTIFICADOR)+ PARENTESIS_C PUNTO_COMA");
+        
+        gramatica.group("EXP_ARIT", "CTE (OP_ARIT (CTE | IDENTIFICADOR))+|"
+                                        + "(PARENTESIS_A)+ CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (PARENTESIS_C)+");
+        
+        gramatica.group("CONDICION", "(IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
+                                         + "(IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+  | "
+                                         + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
+                                         + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+");
+        
+        gramatica.group("EST_DECLAR", "TIPO_DATO IDENTIFICADOR IGUAL EXP_ARIT PUNTO_COMA | "
+                                          + "TIPO_DATO IDENTIFICADOR PUNTO_COMA | "
+                                          + "TIPO_DATO IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA");
+        
+        gramatica.group("EST_ASIG", "IDENTIFICADOR IGUAL EXP_ARIT PUNTO_COMA | "
+                                        + "IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA");
+        
+        gramatica.group("EST_IF", "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA");
+        
+        gramatica.group("EST_WHILE", "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA");
+        
+        gramatica.group("EST_DOWHILE", "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA");
+        
+        gramatica.group("S", "EST_READ | EST_DECLAR | EST_ASIG | EST_IF | EST_WHILE | EST_DOWHILE");
+        
         /* Mostrar gramáticas */
         gramatica.show();
     }
