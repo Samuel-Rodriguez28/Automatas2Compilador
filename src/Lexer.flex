@@ -28,7 +28,7 @@ Digito = [0-9]
 Identificador = {Letra}({Letra}|{Digito})*
 
 /* Número */
-Numero = 0 | [1-9][0-9]* | 0 | "-" [1-9][0-9]*
+Numero = 0 | [1-9][0-9]*
 Numero_Real = 0 | [1-9][0-9]* "." [1-9][0-9]* | "-" [1-9][0-9]* "." [1-9][0-9]*
 
 /* String */
@@ -39,15 +39,12 @@ Boleano = true | false
 
 %%
 
-/* Identificador */
-\${Identificador} { return token(yytext(), "IDENTIFICADOR", yyline, yycolumn); }
-
 /* Tipos de dato */
 {String} { return token(yytext(), "TEXTO", yyline, yycolumn); }
 {Numero} { return token(yytext(), "ENTERO", yyline, yycolumn); }
 {Numero_Real} { return token(yytext(), "REAL", yyline, yycolumn); } 
 {Boleano} { return token(yytext(), "BOLEANO", yyline, yycolumn); }
-{Letra} { return token(yytext(), "CHAR", yyline, yycolumn); }
+{Letra} { return token(yytext(), "CHARACTER", yyline, yycolumn); }
 
 /* Colores */
 #[{Letra}|{Digito}]{6} { return token(yytext(), "COLOR", yyline, yycolumn); }
@@ -97,17 +94,26 @@ print { return token(yytext(), "PRINT", yyline, yycolumn); }
 readIn { return token(yytext(), "READIN", yyline, yycolumn); }
 begin { return token(yytext(), "BEGIN", yyline, yycolumn); }
 end { return token(yytext(), "END", yyline, yycolumn); }
+public { return token(yytext(), "PUBLIC", yyline, yycolumn); }
+private { return token(yytext(), "PRIVATE", yyline, yycolumn); }
+static { return token(yytext(), "STATIC", yyline, yycolumn); }
+void { return token(yytext(), "VOID", yyline, yycolumn); }
+class { return token(yytext(), "CLASS", yyline, yycolumn); }
+return { return token(yytext(), "RETURN", yyline, yycolumn); }
+try { return token(yytext(), "TRY", yyline, yycolumn); }
+catch { return token(yytext(), "CATCH", yyline, yycolumn); }
 
 /* Operadores logicos */
 "&&" { return token(yytext(), "AND", yyline, yycolumn); }
 "||" { return token(yytext(), "OR", yyline, yycolumn); }
 "!" { return token(yytext(), "NOT", yyline, yycolumn); }
 
+
+/* Identificador */
+{Identificador} { return token(yytext(), "IDENTIFICADOR", yyline, yycolumn); }
+
 /*Número Erroneo*/
 0{Numero} { return token(yytext(), "ERROR_1", yyline, yycolumn); }
-
-/*Identificador sin $*/
-{Identificador} { return token(yytext(), "ERROR_2", yyline, yycolumn); }
 
 /* Comentarios o espacios en blanco */
 {Comentario}|{EspacioEnBlanco} { /*Ignorar*/ }

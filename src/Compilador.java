@@ -22,9 +22,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.HashMap;
 import javax.swing.JOptionPane;
 import javax.swing.Timer;
+import java.util.Deque;
+import java.util.LinkedList;
 
 /**
  *
@@ -305,14 +308,643 @@ public class Compilador extends javax.swing.JFrame {
                 JOptionPane.showMessageDialog(null, "No se puede ejecutar el código ya que se encontró uno o más errores",
                         "Error en la compilación", JOptionPane.ERROR_MESSAGE);
             } else {
-                CodeBlock codeBlock = Functions.splitCodeInCodeBlocks(tokens, "{", "}", ";");
-                System.out.println(codeBlock);
+                CodeBlock codeBlock = Functions.splitCodeInCodeBlocks(tokens, "", " ", "\n");
                 ArrayList<String> blocksOfCode = codeBlock.getBlocksOfCodeInOrderOfExec();
-                System.out.println(blocksOfCode);
 
+                executeCode(blocksOfCode);
             }
         }
     }//GEN-LAST:event_btnEjecutarActionPerformed
+
+    private void executeCode(ArrayList<String> blocksOfCode) {
+        // Crear un HashMap que mapea caracteres a enteros
+        HashMap<String, Integer> prioridades = new HashMap<>();
+
+        // Agregar algunos valores al mapa
+        prioridades.put("=", 0);
+        prioridades.put("||", 10);
+        prioridades.put("&&", 20);
+        prioridades.put("!", 30);
+        prioridades.put("<", 40);
+        prioridades.put(">", 40);
+        prioridades.put("<=", 40);
+        prioridades.put(">=", 40);
+        prioridades.put("==", 40);
+        prioridades.put("!=", 40);
+        prioridades.put("+", 50);
+        prioridades.put("-", 50);
+        prioridades.put("*", 60);
+        prioridades.put("/", 60);//Cambiado porque tiene un comportamiento aparte
+        prioridades.put("%", 60);
+
+        //Crear el arreglo donde se va a estar creando el VCI
+        List<String> VCI = new ArrayList<>();
+
+        //Crear las pilas de estatutos, de direcciones y de operadores
+        Deque<String> estatutos = new LinkedList<>();
+        Deque<Integer> direcciones = new LinkedList<>();
+        Deque<String> operadores = new LinkedList<>();
+
+        //Variales temporales para print
+        boolean Existeprint = false;
+
+        for (int i = 0; i < blocksOfCode.size(); i++) {
+            String blockOfCode = blocksOfCode.get(i);
+
+            boolean continuar = true;
+            String cadenasinEspacios = blockOfCode.replace(" ", "");
+
+            if (cadenasinEspacios.contains("~")) {
+                continuar = false;
+            }
+
+            if (identificadores.containsKey(cadenasinEspacios)) {
+                VCI.add(cadenasinEspacios);
+
+                continuar = false;
+            }
+
+            //Modifica la pila de operadores
+            if (prioridades.containsKey(cadenasinEspacios)) {
+                int valor = prioridades.get(cadenasinEspacios);
+
+                while (!operadores.isEmpty() && prioridades.containsKey(operadores.peek())) {
+                    int prioridadTop = prioridades.get(operadores.peek());
+
+                    if (valor < prioridadTop) {
+                        VCI.add(operadores.pop());
+                    } else {
+                        break;
+                    }
+                }
+
+                operadores.push(cadenasinEspacios);
+
+                continuar = false;
+            }
+
+            //Comportamiento particular del parentesis de apertura
+            if (cadenasinEspacios.equals("(")) {
+                operadores.push(cadenasinEspacios);
+                continuar = false;
+            }
+
+            //Comportamiento particular del parentesis de cierre
+            if (cadenasinEspacios.equals(")")) {
+                while (!operadores.isEmpty()) {
+                    if (operadores.peek().equals("(")) {
+                        operadores.pop();
+                        break;
+                    }
+
+                    if (operadores.size() == 1) {
+                        break;
+                    } else {
+                        VCI.add(operadores.pop());
+                    }
+
+                }
+
+                //Comprobar si es fin de una condicion
+                if (Existeprint) {
+                    VCI.add("print");
+                    Existeprint = false;
+                } else {
+                    if (estatutos.peek().equals("if")) {
+                        direcciones.push(VCI.size());
+                        VCI.add("");
+                        VCI.add("if");
+                    }
+
+                    if (estatutos.peek().equals("while")) {
+                        direcciones.push(VCI.size());
+                        VCI.add("");
+                        VCI.add("while");
+                    }
+
+                    if (estatutos.peek().equals("do")) {
+                        estatutos.pop();
+                        VCI.add("");
+                        VCI.set(VCI.size() - 1, "" + direcciones.peek());
+                        direcciones.pop();
+                        VCI.add("finDo");
+                    }
+                }
+
+                continuar = false;
+            }
+
+            //Comportamiento de punto y coma
+            if (cadenasinEspacios.equals(";")) {
+                while (!operadores.isEmpty()) {
+                    VCI.add(operadores.pop());
+                }
+
+                continuar = false;
+            }
+
+            //Llaves
+            if (cadenasinEspacios.equals("{")) {
+                continuar = false;
+            }
+
+            if (cadenasinEspacios.equals("}")) {
+                String estatutoEliminar = estatutos.pop();
+
+                if (estatutoEliminar.equals("if")) {
+                    String nextPos = blocksOfCode.get(i + 1);
+
+                    String nexPosSinEspacios = nextPos.replace(" ", "");
+
+                    if (nexPosSinEspacios.equals("else")) {
+                        estatutos.push("else");
+                        VCI.add("");
+                        VCI.add("else");
+                        VCI.add("");
+                        VCI.set(direcciones.peek(), "" + (VCI.size() - 1));
+                        VCI.remove(VCI.size() - 1);
+                        direcciones.pop();
+                        direcciones.push(VCI.size() - 1);
+                    } else {
+                        VCI.set(direcciones.peek(), "" + (VCI.size()));
+                        direcciones.pop();
+                    }
+                }
+
+                if (estatutoEliminar.equals("else")) {
+                    VCI.set(direcciones.peek() - 1, "" + (VCI.size()));
+                    direcciones.pop();
+                }
+
+                if (estatutoEliminar.equals("while")) {
+                    VCI.set(direcciones.peek(), "" + (VCI.size() + 1));
+                    direcciones.pop();
+                    VCI.add("" + direcciones.peek());
+                    direcciones.pop();
+                    VCI.add("endWhile");
+                }
+
+                if (estatutoEliminar.equals("do")) {
+                    estatutos.push("do");
+                }
+
+                continuar = false;
+            }
+
+            if (cadenasinEspacios.equals("else")) {
+                continuar = false;
+            }
+
+            //comportamiento del print
+            if (cadenasinEspacios.equals("print")) {
+                Existeprint = true;
+                continuar = false;
+            }
+
+            //Palabras de metodos
+            if (cadenasinEspacios.equals("public")
+                    || cadenasinEspacios.equals("static")
+                    || cadenasinEspacios.equals("void")
+                    || cadenasinEspacios.equals("class")) {
+                continuar = false;
+            }
+
+            //Tipos de datos
+            if (cadenasinEspacios.equals("int")
+                    || cadenasinEspacios.equals("String")
+                    || cadenasinEspacios.equals("float")
+                    || cadenasinEspacios.equals("boolean")
+                    || cadenasinEspacios.equals("char")) {
+                continuar = false;
+            }
+
+            //Estatuto if
+            if (cadenasinEspacios.equals("if")) {
+                estatutos.push(cadenasinEspacios);
+                continuar = false;
+            }
+
+            //Estatuto while
+            if (cadenasinEspacios.equals("while")) {
+                if (estatutos.peek().equals("do")) {
+                    continuar = false;
+                } else {
+                    estatutos.push(cadenasinEspacios);
+                    direcciones.push(VCI.size());
+                    continuar = false;
+                }
+            }
+
+            //Estatuto do
+            if (cadenasinEspacios.equals("do")) {
+                estatutos.push(cadenasinEspacios);
+                direcciones.push(VCI.size());
+                continuar = false;
+            }
+
+            if (continuar) {
+                VCI.add(cadenasinEspacios);
+            }
+        }
+
+        System.out.println(VCI.toString());
+        VCI_Exec(VCI);
+    }
+
+    private void VCI_Exec(List<String> VCI) {
+        Deque<String> pilaEjecucion = new LinkedList<>();
+        String consola = "";
+
+        for (int i = 0; i < VCI.size(); i++) {
+            switch (VCI.get(i)) {
+                case "+":
+                    String sum2 = pilaEjecucion.pop();
+                    String sum1 = pilaEjecucion.pop();
+                    float suma1;
+                    float suma2;
+
+                    if (sum1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        suma1 = Float.parseFloat(identificadores.get(sum1));
+                    } else {
+                        suma1 = Float.parseFloat(sum1);
+                    }
+
+                    if (sum2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        suma2 = Float.parseFloat(identificadores.get(sum2));
+                    } else {
+                        suma2 = Float.parseFloat(sum2);
+                    }
+
+                    float suma = suma1 + suma2;
+
+                    pilaEjecucion.push("" + suma);
+
+                    System.out.println(suma1 + "+" + suma2 + "=" + suma);
+                    System.out.println(pilaEjecucion.toString());
+                    break;
+
+                case "-":
+                    String res2 = pilaEjecucion.pop();
+                    String res1 = pilaEjecucion.pop();
+                    float resta1;
+                    float resta2;
+
+                    if (res1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        resta1 = Float.parseFloat(identificadores.get(res1));
+                    } else {
+                        resta1 = Float.parseFloat(res1);
+                    }
+
+                    if (res2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        resta2 = Float.parseFloat(identificadores.get(res1));
+                    } else {
+                        resta2 = Float.parseFloat(res2);
+                    }
+
+                    float resta = resta1 - resta2;
+
+                    pilaEjecucion.push("" + resta);
+                    System.out.println(resta1 + "-" + resta2 + "=" + resta);
+                    System.out.println(pilaEjecucion.toString());
+                    break;
+
+                case "*":
+                    String mul2 = pilaEjecucion.pop();
+                    String mul1 = pilaEjecucion.pop();
+                    float multi1;
+                    float multi2;
+
+                    if (mul1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        multi1 = Float.parseFloat(identificadores.get(mul1));
+                    } else {
+                        multi1 = Float.parseFloat(mul1);
+                    }
+
+                    if (mul2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        multi2 = Float.parseFloat(identificadores.get(mul1));
+                    } else {
+                        multi2 = Float.parseFloat(mul2);
+                    }
+
+                    float multiplicacion = multi1 * multi2;
+
+                    pilaEjecucion.push("" + multiplicacion);
+                    System.out.println(multi1 + "*" + multi2 + "=" + multiplicacion);
+                    System.out.println(pilaEjecucion.toString());
+                    break;
+
+                case "/":
+                    String div2 = pilaEjecucion.pop();
+                    String div1 = pilaEjecucion.pop();
+                    float divi1;
+                    float divi2;
+
+                    if (div1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        divi1 = Float.parseFloat(identificadores.get(div1));
+                    } else {
+                        divi1 = Float.parseFloat(div1);
+                    }
+
+                    if (div2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        divi2 = Float.parseFloat(identificadores.get(div1));
+                    } else {
+                        divi2 = Float.parseFloat(div2);
+                    }
+
+                    float division = divi1 / divi2;
+
+                    pilaEjecucion.push("" + division);
+                    System.out.println(div1 + "/" + div2 + "=" + division);
+                    System.out.println(pilaEjecucion.toString());
+                    break;
+
+                case "%":
+                    String mod2 = pilaEjecucion.pop();
+                    String mod1 = pilaEjecucion.pop();
+                    float modu1;
+                    float modu2;
+
+                    if (mod1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        modu1 = Float.parseFloat(identificadores.get(mod1));
+                    } else {
+                        modu1 = Float.parseFloat(mod1);
+                    }
+
+                    if (mod2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        modu2 = Float.parseFloat(identificadores.get(mod1));
+                    } else {
+                        modu2 = Float.parseFloat(mod2);
+                    }
+
+                    float modulo = modu1 % modu2;
+
+                    pilaEjecucion.push("" + modulo);
+                    break;
+
+                case "=":
+                    String valor = pilaEjecucion.pop();
+                    String identificador = pilaEjecucion.pop();
+
+                    identificadores.put(identificador, valor);
+                    System.out.println(identificadores.toString());
+                    System.out.println(pilaEjecucion.toString());
+                    break;
+
+                case ">":
+                    String may2 = pilaEjecucion.pop();
+                    String may1 = pilaEjecucion.pop();
+                    float mayor1;
+                    float mayor2;
+
+                    if (may1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        mayor1 = Float.parseFloat(identificadores.get(may1));
+                    } else {
+                        mayor1 = Float.parseFloat(may1);
+                    }
+
+                    if (may2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        mayor2 = Float.parseFloat(identificadores.get(may1));
+                    } else {
+                        mayor2 = Float.parseFloat(may2);
+                    }
+
+                    if(mayor1 > mayor2){
+                        pilaEjecucion.push(""+1);
+                    }else{
+                        pilaEjecucion.push(""+0);
+                    }
+                    break;
+
+                case "<":
+                    String men2 = pilaEjecucion.pop();
+                    String men1 = pilaEjecucion.pop();
+                    float menor1;
+                    float menor2;
+
+                    if (men1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        menor1 = Float.parseFloat(identificadores.get(men1));
+                    } else {
+                        menor1 = Float.parseFloat(men1);
+                    }
+
+                    if (men2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        menor2 = Float.parseFloat(identificadores.get(men1));
+                    } else {
+                        menor2 = Float.parseFloat(men2);
+                    }
+
+                    if(menor1 < menor2){
+                        pilaEjecucion.push(""+1);
+                    }else{
+                        pilaEjecucion.push(""+0);
+                    }
+                    break;
+
+                case ">=":
+                    String mayi2 = pilaEjecucion.pop();
+                    String mayi1 = pilaEjecucion.pop();
+                    float mayorigual1;
+                    float mayorigual2;
+
+                    if (mayi1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        mayorigual1 = Float.parseFloat(identificadores.get(mayi1));
+                    } else {
+                        mayorigual1 = Float.parseFloat(mayi1);
+                    }
+
+                    if (mayi2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        mayorigual2 = Float.parseFloat(identificadores.get(mayi1));
+                    } else {
+                        mayorigual2 = Float.parseFloat(mayi2);
+                    }
+
+                    if(mayorigual1 >= mayorigual2){
+                        pilaEjecucion.push(""+1);
+                    }else{
+                        pilaEjecucion.push(""+0);
+                    }
+                    break;
+
+                case "<=":
+                    String meni2 = pilaEjecucion.pop();
+                    String meni1 = pilaEjecucion.pop();
+                    float menorigual1;
+                    float menorigual2;
+
+                    if (meni1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        menorigual1 = Float.parseFloat(identificadores.get(meni1));
+                    } else {
+                        menorigual1 = Float.parseFloat(meni1);
+                    }
+
+                    if (meni2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        menorigual2 = Float.parseFloat(identificadores.get(meni1));
+                    } else {
+                        menorigual2 = Float.parseFloat(meni2);
+                    }
+
+                    if(menorigual1 <= menorigual2){
+                        pilaEjecucion.push(""+1);
+                    }else{
+                        pilaEjecucion.push(""+0);
+                    }
+                    break;
+
+                case "!":
+                    //Por el momento, nada
+                    break;
+
+                case "&&":
+                    int and2 = Integer.parseInt(pilaEjecucion.pop());
+                    int and1 = Integer.parseInt(pilaEjecucion.pop());
+                    
+                    if(and1 == 1 && and2 == 1){
+                        pilaEjecucion.push(""+1);
+                    }else{
+                        pilaEjecucion.push(""+0);
+                    }
+                    break;
+
+                case "||":
+                    int or2 = Integer.parseInt(pilaEjecucion.pop());
+                    int or1 = Integer.parseInt(pilaEjecucion.pop());
+                    
+                    if(or1 == 1 || or2 == 0){
+                        pilaEjecucion.push(""+1);
+                    }else{
+                        pilaEjecucion.push(""+0);
+                    }
+                    break;
+
+                case "!=":
+                    String dif2 = pilaEjecucion.pop();
+                    String dif1 = pilaEjecucion.pop();
+                    float diferente1;
+                    float diferente2;
+
+                    if (dif1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        diferente1 = Float.parseFloat(identificadores.get(dif1));
+                    } else {
+                        diferente1 = Float.parseFloat(dif1);
+                    }
+
+                    if (dif2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        diferente2 = Float.parseFloat(identificadores.get(dif1));
+                    } else {
+                        diferente2 = Float.parseFloat(dif2);
+                    }
+
+                    if(diferente1 != diferente2){
+                        pilaEjecucion.push(""+1);
+                    }else{
+                        pilaEjecucion.push(""+0);
+                    }
+                    break;
+
+                case "==":
+                    String ig2 = pilaEjecucion.pop();
+                    String ig1 = pilaEjecucion.pop();
+                    float igual1;
+                    float igual2;
+
+                    if (ig1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        igual1 = Float.parseFloat(identificadores.get(ig1));
+                    } else {
+                        igual1 = Float.parseFloat(ig1);
+                    }
+
+                    if (ig2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        igual2 = Float.parseFloat(identificadores.get(ig1));
+                    } else {
+                        igual2 = Float.parseFloat(ig2);
+                    }
+
+                    if(igual1 == igual2){
+                        pilaEjecucion.push(""+1);
+                    }else{
+                        pilaEjecucion.push(""+0);
+                    }
+                    break;
+
+                case "print":
+                    String valorParaImprimir = pilaEjecucion.pop();
+
+                    if (valorParaImprimir.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        consola += "\n" + identificadores.get(valorParaImprimir);
+                    } else {
+                        consola += "\n" + valorParaImprimir;
+                    }
+                                        
+                    jtaOutputConsole.setText(consola);
+                    break;
+                    
+                case "if":
+                    int direccionIf = Integer.parseInt(pilaEjecucion.pop());
+                    int condicionIf = Integer.parseInt(pilaEjecucion.pop());
+                    
+                    System.out.println(direccionIf);
+                    
+                    if(condicionIf == 0){
+                        i = direccionIf-1;
+                    }
+                    break;
+                    
+                case "else":
+                    int direccionElse = Integer.parseInt(pilaEjecucion.pop());
+                    
+                    System.out.println(direccionElse);
+                    
+                    i = direccionElse-1;
+                    break;
+                    
+                case "while":
+                    int direccionWhile = Integer.parseInt(pilaEjecucion.pop());
+                    int condicionWhile = Integer.parseInt(pilaEjecucion.pop());
+                    
+                    System.out.println(direccionWhile);
+                    
+                    if(condicionWhile == 0){
+                        i = direccionWhile-1;
+                    }
+                    break;
+                    
+                case "endWhile":
+                    int direccionFinWhile = Integer.parseInt(pilaEjecucion.pop());
+                    
+                    System.out.println(direccionFinWhile);
+                    
+                    i = direccionFinWhile-1;
+                    break;
+                    
+                case "finDo":
+                    int direccionDo = Integer.parseInt(pilaEjecucion.pop());
+                    int condicionDo = Integer.parseInt(pilaEjecucion.pop());
+                    
+                    System.out.println(direccionDo);
+                    
+                    if(condicionDo == 0){
+                        i = direccionDo-1;
+                    }
+                    break;
+
+                default:
+                    if (VCI.get(i).matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                        if (identificadores.containsKey(VCI.get(i))) {
+                            pilaEjecucion.push(VCI.get(i));
+                        } else {
+                            identificadores.put(VCI.get(i), "");
+                            pilaEjecucion.push(VCI.get(i));
+                        }
+                    } else {
+                        pilaEjecucion.push(VCI.get(i));
+                        System.out.println(pilaEjecucion.toString());
+                    }
+                    break;
+            }
+        }
+
+        System.out.println(pilaEjecucion.toString());
+    }
 
     private void compile() {
         clearFields();
@@ -357,146 +989,165 @@ public class Compilador extends javax.swing.JFrame {
         gramatica.delete(new String[]{"ERROR", "ERROR_1", "ERROR_2"}, 1);
 
         /*Agrupación de valores básicos*/
-        gramatica.group("CTE", "ENTERO | TEXTO | CHAR | REAL | BOLEANO");
-        
+        gramatica.group("CTE", "ENTERO | TEXTO | CHARACTER | REAL | BOLEANO");
+
         gramatica.group("TIPO_DATO", "INT | STRING | FLOAT | BOOLEAN | CHAR", true);
 
         gramatica.group("OP_ARIT", "SUMA | RESTA | MULTIPLICACION | DIVISION | MODULO | MULTIPLICACION", true);
-        
+
         gramatica.group("OP_REL", "IGUAL_IGUAL | MAYOR_IGUAL | MENOR_IGUAL | MAYOR | MENOR | DIFERENTE", true);
 
         gramatica.group("OP_LOG", "AND | OR", true);
-        
+
         /*Estatuto Read*/
         gramatica.group("EST_READ", "READIN PARENTESIS_A IDENTIFICADOR PARENTESIS_C PUNTO_COMA | "
-                                        + "READIN PARENTESIS_A IDENTIFICADOR (COMA IDENTIFICADOR)+ PARENTESIS_C PUNTO_COMA");
-        
+                + "READIN PARENTESIS_A IDENTIFICADOR (COMA IDENTIFICADOR)+ PARENTESIS_C PUNTO_COMA");
+
         /*Manejo de errores*/
-        gramatica.group("EST_READ", "READIN IDENTIFICADOR PARENTESIS_C PUNTO_COMA | "
-                                        + "READIN IDENTIFICADOR (COMA IDENTIFICADOR)+ PARENTESIS_C PUNTO_COMA | "
-                                        + "READIN PARENTESIS_A IDENTIFICADOR PUNTO_COMA | "
-                                        + "READIN PARENTESIS_A IDENTIFICADOR (COMA)+ PUNTO_COMA | "
-                                        + "READIN PARENTESIS_A(COMA)+  IDENTIFICADOR PUNTO_COMA | "
-                                        + "READIN PARENTESIS_A IDENTIFICADOR (COMA IDENTIFICADOR)+ PUNTO_COMA", 3, "Error sintáctico: Falta parentesis de apertura o cierre en la expresión [#, %]");
-        
+ /*gramatica.group("EST_READ", "READIN IDENTIFICADOR PARENTESIS_C PUNTO_COMA | "
+                + "READIN IDENTIFICADOR (COMA IDENTIFICADOR)+ PARENTESIS_C PUNTO_COMA | "
+                + "READIN PARENTESIS_A IDENTIFICADOR PUNTO_COMA | "
+                + "READIN PARENTESIS_A IDENTIFICADOR (COMA)+ PUNTO_COMA | "
+                + "READIN PARENTESIS_A(COMA)+  IDENTIFICADOR PUNTO_COMA | "
+                + "READIN PARENTESIS_A IDENTIFICADOR (COMA IDENTIFICADOR)+ PUNTO_COMA", 3, "Error sintáctico {}: Falta parentesis de apertura o cierre en la expresión [#, %]");
+
         gramatica.group("EST_READ", "READIN PARENTESIS_A IDENTIFICADOR PARENTESIS_C | "
-                                        + "READIN PARENTESIS_A IDENTIFICADOR (COMA IDENTIFICADOR)+ PARENTESIS_C", 4, "Error sintáctico: Falta el punto y coma al final de la expresión [#, %]");
-        
-        gramatica.group("EST_READ", "READIN PARENTESIS_A PARENTESIS_C PUNTO_COMA", 5, "Error sintáctico: Nada que leer en la expresión [#, %]");
-        
+                + "READIN PARENTESIS_A IDENTIFICADOR (COMA IDENTIFICADOR)+ PARENTESIS_C", 4, "Error sintáctico {}: Falta el punto y coma al final de la expresión [#, %]");
+
+        gramatica.group("EST_READ", "READIN PARENTESIS_A PARENTESIS_C PUNTO_COMA", 5, "Error sintáctico {}: Nada que leer en la expresión [#, %]");
+         */
         gramatica.finalLineColumn();
-        
+
         /*Estatuto Expresiones Aritmeticas*/
         gramatica.group("EXP_ARIT", "CTE (OP_ARIT (CTE | IDENTIFICADOR))+|"
-                                        + "(PARENTESIS_A)+ CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (PARENTESIS_C)+");
-        
+                + "(PARENTESIS_A)+ CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (PARENTESIS_C)+");
+
         /*Manejo de errores*/
-        gramatica.group("EXP_ARIT", "CTE (OP_ARIT (CTE | IDENTIFICADOR))+|"
-                                        + "CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (PARENTESIS_C)+ | "
-                                        + "(PARENTESIS_A)+ CTE (OP_ARIT (CTE | IDENTIFICADOR))+", 6, "Error sintáctico: Falta parentesis de apertura o cierre en la expresión [#, %]");
-        
-        gramatica.group("EXP_ARIT", "(OP_ARIT (CTE | IDENTIFICADOR))+ | "
-                                        + "CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (OP_ARIT)+ | "
-                                        + "(PARENTESIS_A)+ (OP_ARIT (CTE | IDENTIFICADOR))+ (PARENTESIS_C)+ | "
-                                        + "(PARENTESIS_A)+ CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (OP_ARIT)+ (PARENTESIS_C)+", 7, "Error sintáctico: Expresión incompleta [#, %]");
-        
+ /*gramatica.group("EXP_ARIT", "CTE (OP_ARIT (CTE | IDENTIFICADOR))+|"
+                + "CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (PARENTESIS_C)+ | "
+                + "(PARENTESIS_A)+ CTE (OP_ARIT (CTE | IDENTIFICADOR))+", 6, "Error sintáctico {}: Falta parentesis de apertura o cierre en la expresión [#, %]");
+         */
+ /*gramatica.group("EXP_ARIT", "(OP_ARIT (CTE | IDENTIFICADOR))+ | "
+                + "CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (OP_ARIT)+ | "
+                + "(PARENTESIS_A)+ (OP_ARIT (CTE | IDENTIFICADOR))+ (PARENTESIS_C)+ | "
+                + "(PARENTESIS_A)+ CTE (OP_ARIT (CTE | IDENTIFICADOR))+ (OP_ARIT)+ (PARENTESIS_C)+", 7, "Error sintáctico {}: Expresión incompleta [#, %]");*/
         gramatica.finalLineColumn();
-        
+
         /*Estatuto de condición*/
         gramatica.group("CONDICION", "(IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
-                                         + "(IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+  | "
-                                         + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
-                                         + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+");
-        
+                + "(IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+  | "
+                + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
+                + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+");
+
         /*Manejo de errores*/
-        gramatica.group("CONDICION", "(IDENTIFICADOR | EXP_ARIT) OP_REL | "
-                                         + "OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
-                                         + "(IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG)+ | "
-                                         + "(OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+ | "
-                                         + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL | "
-                                         + "NOT OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
-                                         + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG)+ | "
-                                         + "NOT (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+", 8, "Error sintáctico: Condición incompleta [#, %]");
-        
+ /*gramatica.group("CONDICION", "(IDENTIFICADOR | EXP_ARIT) OP_REL | "
+                + "OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
+                + "(IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG)+ | "
+                + "(OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+ | "
+                + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL | "
+                + "NOT OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) | "
+                + "NOT (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO) (OP_LOG)+ | "
+                + "NOT (OP_LOG (IDENTIFICADOR | EXP_ARIT) OP_REL (IDENTIFICADOR | EXP_ARIT | BOLEANO))+", 8, "Error sintáctico {}: Condición incompleta [#, %]");
+         */
         gramatica.finalLineColumn();
-        
+
         /*Estatuto declarativo*/
         gramatica.group("EST_DECLAR", "TIPO_DATO IDENTIFICADOR IGUAL EXP_ARIT PUNTO_COMA | "
-                                          + "TIPO_DATO IDENTIFICADOR PUNTO_COMA | "
-                                          + "TIPO_DATO IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA");
-        
+                + "TIPO_DATO IDENTIFICADOR PUNTO_COMA | "
+                + "TIPO_DATO IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA", true, identProd);
+
         /*Manejo de errores*/
-        gramatica.group("EST_DECLAR", "TIPO_DATO IGUAL EXP_ARIT PUNTO_COMA | "
-                                          + "TIPO_DATO PUNTO_COMA | "
-                                          + "TIPO_DATO IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA", 2, "Error sintáctico: Falta el identificador en la variable [#, %]");
-        
+ /*gramatica.group("EST_DECLAR", "TIPO_DATO IGUAL EXP_ARIT PUNTO_COMA | "
+                + "TIPO_DATO PUNTO_COMA | "
+                + "TIPO_DATO IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA", 2, "Error sintáctico {}: Falta el identificador en la variable [#, %]");
+
         gramatica.finalLineColumn();
-        
+
         gramatica.group("EST_DECLAR", "TIPO_DATO IDENTIFICADOR IGUAL EXP_ARIT | "
-                                          + "TIPO_DATO IDENTIFICADOR | "
-                                          + "TIPO_DATO IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR)", 3, "Error sintáctico: Falta el punto y coma al final de la expresión [#, %]");
-        
+                + "TIPO_DATO IDENTIFICADOR | "
+                + "TIPO_DATO IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR)", 3, "Error sintáctico {}: Falta el punto y coma al final de la expresión [#, %]");
+
         gramatica.finalLineColumn();
-        
-        /*Estatuto asignación*/
+         */
+ /*Estatuto asignación*/
         gramatica.group("EST_ASIG", "IDENTIFICADOR IGUAL EXP_ARIT PUNTO_COMA | "
-                                        + "IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA");
-        
+                + "IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA");
+
         /*Manejo de errores*/
-        gramatica.group("EST_ASIG", "IGUAL EXP_ARIT PUNTO_COMA | "
-                                        + "IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA", 9, "Error sintáctico: Falta el identificador en la variable [#, %]");
-        
+ /*gramatica.group("EST_ASIG", "IGUAL EXP_ARIT PUNTO_COMA | "
+                + "IGUAL (CTE | IDENTIFICADOR) PUNTO_COMA", 9, "Error sintáctico {}: Falta el identificador en la variable [#, %]");
+
         gramatica.group("EST_ASIG", "IDENTIFICADOR IGUAL EXP_ARIT | "
-                                        + "IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR)", 10, "Error sintáctico: Falta el punto y coma al final de la expresión [#, %]");
-        
+                + "IDENTIFICADOR IGUAL (CTE | IDENTIFICADOR)", 10, "Error sintáctico {}: Falta el punto y coma al final de la expresión [#, %]");
+
         gramatica.group("EST_ASIG", "IDENTIFICADOR IGUAL PUNTO_COMA | "
-                                        + "IDENTIFICADOR IGUAL PUNTO_COMA", 11, "Error sintáctico: Expresión incompleta [#, %]");
-        
-        /*Estatuto if*/
+                + "IDENTIFICADOR IGUAL PUNTO_COMA", 11, "Error sintáctico {}: Expresión incompleta [#, %]");
+         */
+ /*Estatuto if*/
         gramatica.group("EST_IF", "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA");
-        
+
         /*Manejo de errores*/
-        gramatica.group("EST_IF", "IF CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
-                                      + "IF PARENTESIS_A CONDICION LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
-                                      + "IF PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
-                                      + "IF PARENTESIS_A CONDICION PARENTESIS_C (S)+ LLAVE_C PUNTO_COMA | "
-                                      + "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ PUNTO_COMA | "
-                                      + "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A LLAVE_C PUNTO_COMA | "
-                                      + "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C", 12, "Error sintactico: Expresion if incompleta [#, %]");
-        
-        /*Estatuto while*/
+ /*gramatica.group("EST_IF", "IF CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                + "IF PARENTESIS_A CONDICION LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                + "IF PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                + "IF PARENTESIS_A CONDICION PARENTESIS_C (S)+ LLAVE_C PUNTO_COMA | "
+                + "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ PUNTO_COMA | "
+                + "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A LLAVE_C PUNTO_COMA | "
+                + "IF PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C", 12, "Error sintactico {}: Expresion if incompleta [#, %]");
+         */
+ /*Estatuto while*/
         gramatica.group("EST_WHILE", "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA");
-        
+
         /*Manejo de errores*/
-        gramatica.group("EST_WHILE", "WHILE CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
-                                         + "WHILE PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
-                                         + "WHILE PARENTESIS_A CONDICION LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
-                                         + "WHILE PARENTESIS_A CONDICION PARENTESIS_C (S)+ LLAVE_C PUNTO_COMA | "
-                                         + "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A LLAVE_C PUNTO_COMA | "
-                                         + "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S) PUNTO_COMA | "
-                                         + "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C", 12, "Error sintáctico: Estatuto while incompleto [#, %]");
-        
-        /*Estatuto do while*/
+ /*gramatica.group("EST_WHILE", "WHILE CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                + "WHILE PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                + "WHILE PARENTESIS_A CONDICION LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                + "WHILE PARENTESIS_A CONDICION PARENTESIS_C (S)+ LLAVE_C PUNTO_COMA | "
+                + "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A LLAVE_C PUNTO_COMA | "
+                + "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S) PUNTO_COMA | "
+                + "WHILE PARENTESIS_A CONDICION PARENTESIS_C LLAVE_A (S)+ LLAVE_C", 12, "Error sintáctico {}: Estatuto while incompleto [#, %]");
+         */
+ /*Estatuto do while*/
         gramatica.group("EST_DOWHILE", "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA");
-        
+
         /*Manejo de errores*/
-        gramatica.group("EST_DOWHILE", "DO (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
-                                           + "DO LLAVE_A LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
-                                           + "DO LLAVE_A (S)+ WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
-                                           + "DO LLAVE_A (S)+ LLAVE_C PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
-                                           + "DO LLAVE_A (S)+ LLAVE_C WHILE CONDICION PARENTESIS_C PUNTO_COMA | "
-                                           + "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A PARENTESIS_C PUNTO_COMA | "
-                                           + "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PUNTO_COMA | "
-                                           + "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C");
-        
-        /*Estatuto S*/
+ /*gramatica.group("EST_DOWHILE", "DO (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
+                + "DO LLAVE_A (S)+ LLAVE_C PUNTO_COMA | "
+                + "DO LLAVE_A LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
+                + "DO LLAVE_A (S)+ WHILE PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
+                + "DO LLAVE_A (S)+ LLAVE_C PARENTESIS_A CONDICION PARENTESIS_C PUNTO_COMA | "
+                + "DO LLAVE_A (S)+ LLAVE_C WHILE CONDICION PARENTESIS_C PUNTO_COMA | "
+                + "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A PARENTESIS_C PUNTO_COMA | "
+                + "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PUNTO_COMA | "
+                + "DO LLAVE_A (S)+ LLAVE_C WHILE PARENTESIS_A CONDICION PARENTESIS_C", 13, "Error sintáctico {}: Estatuto do while incompleto [#, %]");
+         */
+ /*Estatuto S*/
         gramatica.group("S", "EST_READ | EST_DECLAR | EST_ASIG | EST_IF | EST_WHILE | EST_DOWHILE");
-        
+
+        /*Estatuto Metodos*/
+        gramatica.group("FUNCTIONS", "PUBLIC STATIC VOID IDENTIFICADOR PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ LLAVE_C | "
+                + "PRIVATE STATIC VOID IDENTIFICADOR PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ LLAVE_C | "
+                + "PUBLIC STATIC TIPO_DATO IDENTIFICADOR PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ RETURN EXP_ARIT LLAVE_C | "
+                + "PRIVATE STATIC TIPO_DATO IDENTIFICADOR PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ RETURN EXP_ARIT LLAVE_C | "
+                + "PUBLIC VOID IDENTIFICADOR PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ LLAVE_C | "
+                + "PRIVATE VOID IDENTIFICADOR PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ LLAVE_C | "
+                + "PUBLIC VOID IDENTIFICADOR PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ RETURN EXP_ARIT LLAVE_C | "
+                + "PRIVATE VOID IDENTIFICADOR PARENTESIS_A PARENTESIS_C LLAVE_A (S)+ RETURN EXP_ARIT LLAVE_C");
+
+        /*Estatuto programa*/
+        gramatica.group("PROGRAM", "PUBLIC CLASS IDENTIFICADOR LLAVE_A FUNCTIONS LLAVE_C");
+
         /* Mostrar gramáticas */
         gramatica.show();
     }
 
     private void semanticAnalysis() {
+        /*HashMap<String, String> identDataType = new HashMap<>();
+        identDataType.put("int", "ENTERO");
+        identDataType.put("String", "TEXTO");
+        identDataType.put("float", "REAL");
+        identDataType.put("boolean", "BOLEANO");
+        identDataType.put("char", "CHARACTER");*/
     }
 
     private void colorAnalysis() {
@@ -535,6 +1186,8 @@ public class Compilador extends javax.swing.JFrame {
 
     private void printConsole() {
         int sizeErrors = errors.size();
+
+        //System.out.print(errors.size());
         if (sizeErrors > 0) {
             Functions.sortErrorsByLineAndColumn(errors);
             String strErrors = "\n";
