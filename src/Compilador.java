@@ -43,6 +43,8 @@ public class Compilador extends javax.swing.JFrame {
     private Timer timerKeyReleased;
     private ArrayList<Production> identProd;
     private HashMap<String, String> identificadores;
+    private HashMap<String, String> tipo_identificadores;
+    private HashMap<String, String> dir_rutinas;
     private boolean codeHasBeenCompiled = false;
 
     /**
@@ -82,6 +84,8 @@ public class Compilador extends javax.swing.JFrame {
         textsColor = new ArrayList<>();
         identProd = new ArrayList<>();
         identificadores = new HashMap<>();
+        tipo_identificadores = new HashMap<>();
+        dir_rutinas = new HashMap<>();
 
         Functions.setAutocompleterJTextComponent(new String[]{"if", "else", "while", "do", "int", "String", "float", "char", "print"}, jtpCode, () -> {
             timerKeyReleased.restart();
@@ -303,17 +307,10 @@ public class Compilador extends javax.swing.JFrame {
 
     private void btnEjecutarActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnEjecutarActionPerformed
         btnCompilar.doClick();
-        if (codeHasBeenCompiled) {
-            if (!errors.isEmpty()) {
-                JOptionPane.showMessageDialog(null, "No se puede ejecutar el código ya que se encontró uno o más errores",
-                        "Error en la compilación", JOptionPane.ERROR_MESSAGE);
-            } else {
-                CodeBlock codeBlock = Functions.splitCodeInCodeBlocks(tokens, "", " ", "\n");
-                ArrayList<String> blocksOfCode = codeBlock.getBlocksOfCodeInOrderOfExec();
+        CodeBlock codeBlock = Functions.splitCodeInCodeBlocks(tokens, "", " ", "\n");
+        ArrayList<String> blocksOfCode = codeBlock.getBlocksOfCodeInOrderOfExec();
 
-                executeCode(blocksOfCode);
-            }
-        }
+        executeCode(blocksOfCode);
     }//GEN-LAST:event_btnEjecutarActionPerformed
 
     private void executeCode(ArrayList<String> blocksOfCode) {
@@ -334,7 +331,7 @@ public class Compilador extends javax.swing.JFrame {
         prioridades.put("+", 50);
         prioridades.put("-", 50);
         prioridades.put("*", 60);
-        prioridades.put("/", 60);//Cambiado porque tiene un comportamiento aparte
+        prioridades.put("/", 60);
         prioridades.put("%", 60);
 
         //Crear el arreglo donde se va a estar creando el VCI
@@ -345,8 +342,14 @@ public class Compilador extends javax.swing.JFrame {
         Deque<Integer> direcciones = new LinkedList<>();
         Deque<String> operadores = new LinkedList<>();
 
+        //Pila de tipos de datos
+        Deque<String> tipo_datos = new LinkedList<>();
+
         //Variales temporales para print
         boolean Existeprint = false;
+        boolean Existeread = false;
+        boolean Existerutina = false;
+        boolean Existeclase = false;
 
         for (int i = 0; i < blocksOfCode.size(); i++) {
             String blockOfCode = blocksOfCode.get(i);
@@ -406,28 +409,36 @@ public class Compilador extends javax.swing.JFrame {
                 }
 
                 //Comprobar si es fin de una condicion
-                if (Existeprint) {
-                    VCI.add("print");
-                    Existeprint = false;
+                if (Existeread) {
+                    VCI.add("readIn");
+                    Existeread = false;
                 } else {
-                    if (estatutos.peek().equals("if")) {
-                        direcciones.push(VCI.size());
-                        VCI.add("");
-                        VCI.add("if");
-                    }
+                    if (Existeprint) {
+                        VCI.add("print");
+                        Existeprint = false;
+                    } else {
+                        if (estatutos.peek() != null) {
+                            if (estatutos.peek().equals("if")) {
+                                direcciones.push(VCI.size());
+                                VCI.add("");
+                                VCI.add("if");
+                            }
 
-                    if (estatutos.peek().equals("while")) {
-                        direcciones.push(VCI.size());
-                        VCI.add("");
-                        VCI.add("while");
-                    }
+                            if (estatutos.peek().equals("while")) {
+                                direcciones.push(VCI.size());
+                                VCI.add("");
+                                VCI.add("while");
+                            }
 
-                    if (estatutos.peek().equals("do")) {
-                        estatutos.pop();
-                        VCI.add("");
-                        VCI.set(VCI.size() - 1, "" + direcciones.peek());
-                        direcciones.pop();
-                        VCI.add("finDo");
+                            if (estatutos.peek().equals("do")) {
+                                estatutos.pop();
+                                VCI.add("");
+                                VCI.set(VCI.size() - 1, "" + direcciones.peek());
+                                direcciones.pop();
+                                VCI.add("finDo");
+                            }
+                        }
+
                     }
                 }
 
@@ -443,13 +454,30 @@ public class Compilador extends javax.swing.JFrame {
                 continuar = false;
             }
 
-            //Llaves
-            if (cadenasinEspacios.equals("{")) {
+            //Comportamiento de la coma
+            if (cadenasinEspacios.equals(",")) {
+                if (Existeread) {
+                    VCI.add("readIn");
+                }
+
+                if (Existeprint) {
+                    VCI.add("print");
+                }
+
                 continuar = false;
             }
 
+            //Llaves
+            if (cadenasinEspacios.equals("{")) {
+                continuar = false;
+
+            }
+
             if (cadenasinEspacios.equals("}")) {
+                System.out.println("Encontro una llave de cierre\n");
+                System.out.println("Primer estatuto en la pila: " + estatutos.peek());
                 String estatutoEliminar = estatutos.pop();
+                boolean esRutina = true;
 
                 if (estatutoEliminar.equals("if")) {
                     String nextPos = blocksOfCode.get(i + 1);
@@ -469,23 +497,39 @@ public class Compilador extends javax.swing.JFrame {
                         VCI.set(direcciones.peek(), "" + (VCI.size()));
                         direcciones.pop();
                     }
+
+                    esRutina = false;
                 }
 
                 if (estatutoEliminar.equals("else")) {
                     VCI.set(direcciones.peek() - 1, "" + (VCI.size()));
                     direcciones.pop();
+
+                    esRutina = false;
                 }
 
                 if (estatutoEliminar.equals("while")) {
-                    VCI.set(direcciones.peek(), "" + (VCI.size() + 1));
+                    VCI.set(direcciones.peek(), "" + (VCI.size() + 2));
                     direcciones.pop();
                     VCI.add("" + direcciones.peek());
                     direcciones.pop();
                     VCI.add("endWhile");
+                    esRutina = false;
                 }
 
                 if (estatutoEliminar.equals("do")) {
                     estatutos.push("do");
+                    esRutina = false;
+                }
+
+                if (Existeclase) {
+                    Existeclase = false;
+                }
+
+                if (Existerutina && esRutina) {
+                    VCI.add("finRutina");
+                    Existerutina = false;
+                    System.out.println("Se cerro una rutina");
                 }
 
                 continuar = false;
@@ -501,20 +545,51 @@ public class Compilador extends javax.swing.JFrame {
                 continuar = false;
             }
 
+            //Comportamiento del readIn
+            if (cadenasinEspacios.equals("readIn")) {
+                Existeread = true;
+                continuar = false;
+            }
+
             //Palabras de metodos
-            if (cadenasinEspacios.equals("public")
-                    || cadenasinEspacios.equals("static")
-                    || cadenasinEspacios.equals("void")
-                    || cadenasinEspacios.equals("class")) {
+            if (cadenasinEspacios.equals("public")) {
+                continuar = false;
+            }
+
+            if (cadenasinEspacios.equals("class")) {
+                Existeclase = true;
+                continuar = false;
+            }
+
+            if (cadenasinEspacios.equals("void")) {
+                System.out.println("Se abrio una rutina");
+                Existerutina = true;
                 continuar = false;
             }
 
             //Tipos de datos
-            if (cadenasinEspacios.equals("int")
-                    || cadenasinEspacios.equals("String")
-                    || cadenasinEspacios.equals("float")
-                    || cadenasinEspacios.equals("boolean")
-                    || cadenasinEspacios.equals("char")) {
+            if (cadenasinEspacios.equals("int")) {
+                tipo_datos.push("int");
+                continuar = false;
+            }
+
+            if (cadenasinEspacios.equals("String")) {
+                tipo_datos.push("String");
+                continuar = false;
+            }
+
+            if (cadenasinEspacios.equals("float")) {
+                tipo_datos.push("float");
+                continuar = false;
+            }
+
+            if (cadenasinEspacios.equals("boolean")) {
+                tipo_datos.push("boolean");
+                continuar = false;
+            }
+
+            if (cadenasinEspacios.equals("char")) {
+                tipo_datos.push("char");
                 continuar = false;
             }
 
@@ -526,13 +601,20 @@ public class Compilador extends javax.swing.JFrame {
 
             //Estatuto while
             if (cadenasinEspacios.equals("while")) {
-                if (estatutos.peek().equals("do")) {
-                    continuar = false;
+                if (estatutos.peek() != null) {
+                    if (estatutos.peek().equals("do")) {
+                        continuar = false;
+                    } else {
+                        estatutos.push(cadenasinEspacios);
+                        direcciones.push(VCI.size());
+                        continuar = false;
+                    }
                 } else {
                     estatutos.push(cadenasinEspacios);
                     direcciones.push(VCI.size());
                     continuar = false;
                 }
+
             }
 
             //Estatuto do
@@ -542,40 +624,87 @@ public class Compilador extends javax.swing.JFrame {
                 continuar = false;
             }
 
-            if (continuar) {
+            //Comprobar si se está llamando una rutina anterior
+            if (dir_rutinas.containsKey(cadenasinEspacios)) {
                 VCI.add(cadenasinEspacios);
+                VCI.add("ejecuta");
+                continuar = false;
+            }
+
+            if (continuar) {
+                if (cadenasinEspacios.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                    boolean es_variable = tipo_identificadores.containsKey(cadenasinEspacios);
+
+                    if (!tipo_datos.isEmpty()) {
+                        tipo_identificadores.put(cadenasinEspacios, tipo_datos.peek());
+                        tipo_datos.pop();
+                        VCI.add(cadenasinEspacios);
+                    } else {
+                        if (Existerutina && !es_variable) {
+                            dir_rutinas.put(cadenasinEspacios, "" + (VCI.size() + 1));
+                            estatutos.push(cadenasinEspacios);
+                            VCI.add(cadenasinEspacios);
+                            es_variable = false;
+                        }
+
+                        if (Existeclase && !es_variable) {
+                            estatutos.push(cadenasinEspacios);
+                            es_variable = false;
+                        }
+                    }
+
+                    if (es_variable) {
+                        VCI.add(cadenasinEspacios);
+                    }
+                } else {
+                    VCI.add(cadenasinEspacios);
+                }
+
+                System.out.println("Pila de estatutos:\n" + estatutos.toString());
             }
         }
 
-        System.out.println(VCI.toString());
+        System.out.println("Tipo identificadores:\n" + tipo_identificadores.toString());
+        System.out.println("Funciones y direcciones:\n" + dir_rutinas.toString());
+        System.out.println("VCI:\n" + VCI.toString());
         VCI_Exec(VCI);
     }
 
     private void VCI_Exec(List<String> VCI) {
         Deque<String> pilaEjecucion = new LinkedList<>();
         String consola = "";
+        int dirMain = 0;
+        int direccionActual = 0;
+        int direccionRutina = 0;
 
+        //Buscar el metodo main
         for (int i = 0; i < VCI.size(); i++) {
+            if (VCI.get(i).equals("main")) {
+                dirMain = i + 1;
+            }
+        }
+
+        for (int i = dirMain; i < VCI.size(); i++) {
             switch (VCI.get(i)) {
                 case "+":
                     String sum2 = pilaEjecucion.pop();
                     String sum1 = pilaEjecucion.pop();
-                    float suma1;
-                    float suma2;
+                    int suma1;
+                    int suma2;
 
-                    if (sum1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        suma1 = Float.parseFloat(identificadores.get(sum1));
+                    if (sum1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        suma1 = Integer.parseInt(identificadores.get(sum1));
                     } else {
-                        suma1 = Float.parseFloat(sum1);
+                        suma1 = Integer.parseInt(sum1);
                     }
 
-                    if (sum2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        suma2 = Float.parseFloat(identificadores.get(sum2));
+                    if (sum2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        suma2 = Integer.parseInt(identificadores.get(sum2));
                     } else {
-                        suma2 = Float.parseFloat(sum2);
+                        suma2 = Integer.parseInt(sum2);
                     }
 
-                    float suma = suma1 + suma2;
+                    int suma = suma1 + suma2;
 
                     pilaEjecucion.push("" + suma);
 
@@ -589,16 +718,16 @@ public class Compilador extends javax.swing.JFrame {
                     float resta1;
                     float resta2;
 
-                    if (res1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        resta1 = Float.parseFloat(identificadores.get(res1));
+                    if (res1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        resta1 = Integer.parseInt(identificadores.get(res1));
                     } else {
-                        resta1 = Float.parseFloat(res1);
+                        resta1 = Integer.parseInt(res1);
                     }
 
-                    if (res2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        resta2 = Float.parseFloat(identificadores.get(res1));
+                    if (res2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        resta2 = Integer.parseInt(identificadores.get(res2));
                     } else {
-                        resta2 = Float.parseFloat(res2);
+                        resta2 = Integer.parseInt(res2);
                     }
 
                     float resta = resta1 - resta2;
@@ -611,22 +740,24 @@ public class Compilador extends javax.swing.JFrame {
                 case "*":
                     String mul2 = pilaEjecucion.pop();
                     String mul1 = pilaEjecucion.pop();
-                    float multi1;
-                    float multi2;
+                    
+                    System.out.println(mul1);
+                    int multi1;
+                    int multi2;
 
-                    if (mul1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        multi1 = Float.parseFloat(identificadores.get(mul1));
+                    if (mul1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        multi1 = Integer.parseInt(identificadores.get(mul1));
                     } else {
-                        multi1 = Float.parseFloat(mul1);
+                        multi1 = Integer.parseInt(mul1);
                     }
 
-                    if (mul2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        multi2 = Float.parseFloat(identificadores.get(mul1));
+                    if (mul2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        multi2 = Integer.parseInt(identificadores.get(mul2));
                     } else {
-                        multi2 = Float.parseFloat(mul2);
+                        multi2 = Integer.parseInt(mul2);
                     }
 
-                    float multiplicacion = multi1 * multi2;
+                    int multiplicacion = multi1 * multi2;
 
                     pilaEjecucion.push("" + multiplicacion);
                     System.out.println(multi1 + "*" + multi2 + "=" + multiplicacion);
@@ -639,16 +770,16 @@ public class Compilador extends javax.swing.JFrame {
                     float divi1;
                     float divi2;
 
-                    if (div1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        divi1 = Float.parseFloat(identificadores.get(div1));
+                    if (div1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        divi1 = Integer.parseInt(identificadores.get(div1));
                     } else {
-                        divi1 = Float.parseFloat(div1);
+                        divi1 = Integer.parseInt(div1);
                     }
 
-                    if (div2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        divi2 = Float.parseFloat(identificadores.get(div1));
+                    if (div2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        divi2 = Integer.parseInt(identificadores.get(div2));
                     } else {
-                        divi2 = Float.parseFloat(div2);
+                        divi2 = Integer.parseInt(div2);
                     }
 
                     float division = divi1 / divi2;
@@ -661,22 +792,22 @@ public class Compilador extends javax.swing.JFrame {
                 case "%":
                     String mod2 = pilaEjecucion.pop();
                     String mod1 = pilaEjecucion.pop();
-                    float modu1;
-                    float modu2;
+                    int modu1;
+                    int modu2;
 
-                    if (mod1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        modu1 = Float.parseFloat(identificadores.get(mod1));
+                    if (mod1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        modu1 = Integer.parseInt(identificadores.get(mod1));
                     } else {
-                        modu1 = Float.parseFloat(mod1);
+                        modu1 = Integer.parseInt(mod1);
                     }
 
-                    if (mod2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        modu2 = Float.parseFloat(identificadores.get(mod1));
+                    if (mod2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        modu2 = Integer.parseInt(identificadores.get(mod2));
                     } else {
-                        modu2 = Float.parseFloat(mod2);
+                        modu2 = Integer.parseInt(mod2);
                     }
 
-                    float modulo = modu1 % modu2;
+                    int modulo = modu1 % modu2;
 
                     pilaEjecucion.push("" + modulo);
                     break;
@@ -686,8 +817,8 @@ public class Compilador extends javax.swing.JFrame {
                     String identificador = pilaEjecucion.pop();
 
                     identificadores.put(identificador, valor);
-                    System.out.println(identificadores.toString());
-                    System.out.println(pilaEjecucion.toString());
+
+                    System.out.println("Valores: " + identificadores.toString());
                     break;
 
                 case ">":
@@ -696,47 +827,47 @@ public class Compilador extends javax.swing.JFrame {
                     float mayor1;
                     float mayor2;
 
-                    if (may1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        mayor1 = Float.parseFloat(identificadores.get(may1));
+                    if (may1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        mayor1 = Integer.parseInt(identificadores.get(may1));
                     } else {
-                        mayor1 = Float.parseFloat(may1);
+                        mayor1 = Integer.parseInt(may1);
                     }
 
-                    if (may2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        mayor2 = Float.parseFloat(identificadores.get(may1));
+                    if (may2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        mayor2 = Integer.parseInt(identificadores.get(may1));
                     } else {
-                        mayor2 = Float.parseFloat(may2);
+                        mayor2 = Integer.parseInt(may2);
                     }
 
-                    if(mayor1 > mayor2){
-                        pilaEjecucion.push(""+1);
-                    }else{
-                        pilaEjecucion.push(""+0);
+                    if (mayor1 > mayor2) {
+                        pilaEjecucion.push("" + 1);
+                    } else {
+                        pilaEjecucion.push("" + 0);
                     }
                     break;
 
                 case "<":
                     String men2 = pilaEjecucion.pop();
                     String men1 = pilaEjecucion.pop();
-                    float menor1;
-                    float menor2;
+                    int menor1;
+                    int menor2;
 
-                    if (men1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        menor1 = Float.parseFloat(identificadores.get(men1));
+                    if (men1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        menor1 = Integer.parseInt(identificadores.get(men1));
                     } else {
-                        menor1 = Float.parseFloat(men1);
+                        menor1 = Integer.parseInt(men1);
                     }
 
-                    if (men2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        menor2 = Float.parseFloat(identificadores.get(men1));
+                    if (men2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        menor2 = Integer.parseInt(identificadores.get(men1));
                     } else {
-                        menor2 = Float.parseFloat(men2);
+                        menor2 = Integer.parseInt(men2);
                     }
 
-                    if(menor1 < menor2){
-                        pilaEjecucion.push(""+1);
-                    }else{
-                        pilaEjecucion.push(""+0);
+                    if (menor1 < menor2) {
+                        pilaEjecucion.push("" + 1);
+                    } else {
+                        pilaEjecucion.push("" + 0);
                     }
                     break;
 
@@ -746,22 +877,22 @@ public class Compilador extends javax.swing.JFrame {
                     float mayorigual1;
                     float mayorigual2;
 
-                    if (mayi1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        mayorigual1 = Float.parseFloat(identificadores.get(mayi1));
+                    if (mayi1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        mayorigual1 = Integer.parseInt(identificadores.get(mayi1));
                     } else {
-                        mayorigual1 = Float.parseFloat(mayi1);
+                        mayorigual1 = Integer.parseInt(mayi1);
                     }
 
-                    if (mayi2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        mayorigual2 = Float.parseFloat(identificadores.get(mayi1));
+                    if (mayi2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        mayorigual2 = Integer.parseInt(identificadores.get(mayi1));
                     } else {
-                        mayorigual2 = Float.parseFloat(mayi2);
+                        mayorigual2 = Integer.parseInt(mayi2);
                     }
 
-                    if(mayorigual1 >= mayorigual2){
-                        pilaEjecucion.push(""+1);
-                    }else{
-                        pilaEjecucion.push(""+0);
+                    if (mayorigual1 >= mayorigual2) {
+                        pilaEjecucion.push("" + 1);
+                    } else {
+                        pilaEjecucion.push("" + 0);
                     }
                     break;
 
@@ -771,22 +902,22 @@ public class Compilador extends javax.swing.JFrame {
                     float menorigual1;
                     float menorigual2;
 
-                    if (meni1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        menorigual1 = Float.parseFloat(identificadores.get(meni1));
+                    if (meni1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        menorigual1 = Integer.parseInt(identificadores.get(meni1));
                     } else {
-                        menorigual1 = Float.parseFloat(meni1);
+                        menorigual1 = Integer.parseInt(meni1);
                     }
 
-                    if (meni2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        menorigual2 = Float.parseFloat(identificadores.get(meni1));
+                    if (meni2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        menorigual2 = Integer.parseInt(identificadores.get(meni1));
                     } else {
-                        menorigual2 = Float.parseFloat(meni2);
+                        menorigual2 = Integer.parseInt(meni2);
                     }
 
-                    if(menorigual1 <= menorigual2){
-                        pilaEjecucion.push(""+1);
-                    }else{
-                        pilaEjecucion.push(""+0);
+                    if (menorigual1 <= menorigual2) {
+                        pilaEjecucion.push("" + 1);
+                    } else {
+                        pilaEjecucion.push("" + 0);
                     }
                     break;
 
@@ -797,22 +928,22 @@ public class Compilador extends javax.swing.JFrame {
                 case "&&":
                     int and2 = Integer.parseInt(pilaEjecucion.pop());
                     int and1 = Integer.parseInt(pilaEjecucion.pop());
-                    
-                    if(and1 == 1 && and2 == 1){
-                        pilaEjecucion.push(""+1);
-                    }else{
-                        pilaEjecucion.push(""+0);
+
+                    if (and1 == 1 && and2 == 1) {
+                        pilaEjecucion.push("" + 1);
+                    } else {
+                        pilaEjecucion.push("" + 0);
                     }
                     break;
 
                 case "||":
                     int or2 = Integer.parseInt(pilaEjecucion.pop());
                     int or1 = Integer.parseInt(pilaEjecucion.pop());
-                    
-                    if(or1 == 1 || or2 == 0){
-                        pilaEjecucion.push(""+1);
-                    }else{
-                        pilaEjecucion.push(""+0);
+
+                    if (or1 == 1 || or2 == 0) {
+                        pilaEjecucion.push("" + 1);
+                    } else {
+                        pilaEjecucion.push("" + 0);
                     }
                     break;
 
@@ -822,22 +953,22 @@ public class Compilador extends javax.swing.JFrame {
                     float diferente1;
                     float diferente2;
 
-                    if (dif1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        diferente1 = Float.parseFloat(identificadores.get(dif1));
+                    if (dif1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        diferente1 = Integer.parseInt(identificadores.get(dif1));
                     } else {
-                        diferente1 = Float.parseFloat(dif1);
+                        diferente1 = Integer.parseInt(dif1);
                     }
 
-                    if (dif2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        diferente2 = Float.parseFloat(identificadores.get(dif1));
+                    if (dif2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        diferente2 = Integer.parseInt(identificadores.get(dif1));
                     } else {
-                        diferente2 = Float.parseFloat(dif2);
+                        diferente2 = Integer.parseInt(dif2);
                     }
 
-                    if(diferente1 != diferente2){
-                        pilaEjecucion.push(""+1);
-                    }else{
-                        pilaEjecucion.push(""+0);
+                    if (diferente1 != diferente2) {
+                        pilaEjecucion.push("" + 1);
+                    } else {
+                        pilaEjecucion.push("" + 0);
                     }
                     break;
 
@@ -847,103 +978,144 @@ public class Compilador extends javax.swing.JFrame {
                     float igual1;
                     float igual2;
 
-                    if (ig1.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        igual1 = Float.parseFloat(identificadores.get(ig1));
+                    if (ig1.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        igual1 = Integer.parseInt(identificadores.get(ig1));
                     } else {
-                        igual1 = Float.parseFloat(ig1);
+                        igual1 = Integer.parseInt(ig1);
                     }
 
-                    if (ig2.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        igual2 = Float.parseFloat(identificadores.get(ig1));
+                    if (ig2.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
+                        igual2 = Integer.parseInt(identificadores.get(ig1));
                     } else {
-                        igual2 = Float.parseFloat(ig2);
+                        igual2 = Integer.parseInt(ig2);
                     }
 
-                    if(igual1 == igual2){
-                        pilaEjecucion.push(""+1);
-                    }else{
-                        pilaEjecucion.push(""+0);
+                    if (igual1 == igual2) {
+                        pilaEjecucion.push("" + 1);
+                    } else {
+                        pilaEjecucion.push("" + 0);
                     }
                     break;
 
                 case "print":
                     String valorParaImprimir = pilaEjecucion.pop();
 
-                    if (valorParaImprimir.matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
+                    if (valorParaImprimir.matches("^[a-zA-Z]+[a-zA-Z0-9]*$")) {
                         consola += "\n" + identificadores.get(valorParaImprimir);
                     } else {
                         consola += "\n" + valorParaImprimir;
                     }
-                                        
+
+                    System.out.println(identificadores.toString());
+
                     jtaOutputConsole.setText(consola);
                     break;
-                    
+
+                case "readIn":
+                    String valorParaLeer = pilaEjecucion.pop();
+
+                    String tipoDatoParaLeer = tipo_identificadores.get(valorParaLeer);
+
+                    switch (tipoDatoParaLeer) {
+                        case "int":
+                            int valorInt = Integer.parseInt(JOptionPane.showInputDialog(null, "Inserta valor entero para " + valorParaLeer));
+                            identificadores.put(valorParaLeer, ("" + valorInt));
+                            break;
+
+                        case "String":
+                            String valorString = JOptionPane.showInputDialog("Inserta valor de String para " + valorParaLeer);
+                            identificadores.put(valorParaLeer, valorString);
+                            break;
+
+                        case "float":
+                            float valorFloat = Integer.parseInt(JOptionPane.showInputDialog("Inserta valor float para " + valorParaLeer));
+                            identificadores.put(valorParaLeer, "" + valorFloat);
+                            break;
+
+                        case "boolean":
+                            boolean valorBool = Boolean.parseBoolean(JOptionPane.showInputDialog("Inserta valor boolean para " + valorParaLeer));
+                            identificadores.put(valorParaLeer, "" + valorBool);
+                            break;
+
+                        case "char":
+                            String valorChar = JOptionPane.showInputDialog("Inserta valor char para " + valorParaLeer);
+                            identificadores.put(valorParaLeer, "" + valorChar);
+                            break;
+                    }
+                    break;
+
                 case "if":
                     int direccionIf = Integer.parseInt(pilaEjecucion.pop());
                     int condicionIf = Integer.parseInt(pilaEjecucion.pop());
-                    
+
                     System.out.println(direccionIf);
-                    
-                    if(condicionIf == 0){
-                        i = direccionIf-1;
+
+                    if (condicionIf == 0) {
+                        i = direccionIf - 1;
                     }
                     break;
-                    
+
                 case "else":
                     int direccionElse = Integer.parseInt(pilaEjecucion.pop());
-                    
+
                     System.out.println(direccionElse);
-                    
-                    i = direccionElse-1;
+
+                    i = direccionElse - 1;
                     break;
-                    
+
                 case "while":
                     int direccionWhile = Integer.parseInt(pilaEjecucion.pop());
                     int condicionWhile = Integer.parseInt(pilaEjecucion.pop());
-                    
+
                     System.out.println(direccionWhile);
-                    
-                    if(condicionWhile == 0){
-                        i = direccionWhile-1;
+
+                    if (condicionWhile == 0) {
+                        i = direccionWhile - 1;
                     }
                     break;
-                    
+
                 case "endWhile":
                     int direccionFinWhile = Integer.parseInt(pilaEjecucion.pop());
-                    
+
                     System.out.println(direccionFinWhile);
-                    
-                    i = direccionFinWhile-1;
+
+                    i = direccionFinWhile - 1;
                     break;
-                    
+
                 case "finDo":
                     int direccionDo = Integer.parseInt(pilaEjecucion.pop());
                     int condicionDo = Integer.parseInt(pilaEjecucion.pop());
-                    
-                    System.out.println(direccionDo);
-                    
-                    if(condicionDo == 0){
-                        i = direccionDo-1;
+
+                    System.out.println("Direccion do: " + direccionDo);
+
+                    if (condicionDo == 1) {
+                        i = direccionDo - 1;
                     }
+                    break;
+
+                case "ejecuta":
+                    String nombreRutina = pilaEjecucion.pop();
+                    System.out.println("Encontro una rutina que ejecutar: " + nombreRutina);
+                    direccionActual = i;
+
+                    direccionRutina = Integer.parseInt(dir_rutinas.get(nombreRutina));
+
+                    i = direccionRutina - 1;
+                    break;
+
+                case "finRutina":
+                    direccionActual += 1;
+                    i = direccionActual - 1;
                     break;
 
                 default:
-                    if (VCI.get(i).matches("^[a-zA-Z]+[a-zA-Z0-9]+$")) {
-                        if (identificadores.containsKey(VCI.get(i))) {
-                            pilaEjecucion.push(VCI.get(i));
-                        } else {
-                            identificadores.put(VCI.get(i), "");
-                            pilaEjecucion.push(VCI.get(i));
-                        }
-                    } else {
-                        pilaEjecucion.push(VCI.get(i));
-                        System.out.println(pilaEjecucion.toString());
-                    }
+                    pilaEjecucion.push(VCI.get(i));
                     break;
             }
+
+            System.out.println(pilaEjecucion.toString());
         }
 
-        System.out.println(pilaEjecucion.toString());
     }
 
     private void compile() {
@@ -1185,9 +1357,8 @@ public class Compilador extends javax.swing.JFrame {
     }
 
     private void printConsole() {
-        int sizeErrors = errors.size();
+        /*int sizeErrors = errors.size();
 
-        //System.out.print(errors.size());
         if (sizeErrors > 0) {
             Functions.sortErrorsByLineAndColumn(errors);
             String strErrors = "\n";
@@ -1199,7 +1370,7 @@ public class Compilador extends javax.swing.JFrame {
         } else {
             jtaOutputConsole.setText("Compilación terminada...");
         }
-        jtaOutputConsole.setCaretPosition(0);
+        jtaOutputConsole.setCaretPosition(0);*/
     }
 
     private void clearFields() {

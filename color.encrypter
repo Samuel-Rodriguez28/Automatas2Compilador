@@ -1,16 +1,30 @@
-print("hola");
-print("como");
-print("estan");
+public class clase{
+   public void tabla2(){
+      int x = 1;
+      int y = 0;
+      int n = 0;
 
+     readIn(n);
+      while(x < 11){
+        y = n* x;
+        x = x + 1;
 
+         print(y);
+      }
 
+      if(n % 2 == 0){
+         print("par");
+   }else{
+       print("impar");
+}
+}
 
+   public void main(){
+      print("Tabla_del_2");
 
-
-
-
-
-
+      tabla2();
+   }
+}
 
 
 
